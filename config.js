@@ -3,7 +3,7 @@ window.CFG = {
   SCRIPT_URL: "https://script.google.com/macros/s/AKfycbxgb9unM2NwwTlYwj5cM_wgoqSClNw0YaPam08dW4SQPYaZJ8lkyhIdO_lA16G-1wtg/exec",   // ← رابط Google Apps Script الذي ينتهي بـ /exec (اتركه فارغاً للتجربة المحلية)
   OFFICE: "مكتب الأولمبياد العلمي السوري بدرعا",
   ENGINEER: "المهندس أسامة الصلخدي",
-  SUBJECT: "الرياضيات"   // ← اسم الاختصاص (يظهر في الترويسة): الرياضيات / المعلوماتية / ...
+  SUBJECT: "الرياضيات2027"   // ← اسم الاختصاص (يظهر في الترويسة): الرياضيات / المعلوماتية / ...
 };
 
 /* الاختبارات تُضاف من لوحة التحكم (admin.html) باستيراد ملف HTML، فلا حاجة لتعديل هذا الملف.
