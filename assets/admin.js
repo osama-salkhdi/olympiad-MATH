@@ -167,7 +167,7 @@ function renderStudents(){
       <div><label>الاسم الثلاثي</label><input id="m_nm" autocomplete="off"></div><div><button id="m_add">إضافة</button></div></div><div id="m_msg"></div></div>
   <div class="card"><h2>📊 رفع ملف إكسل بأسماء الطلاب</h2>
     <p class="muted" style="margin-top:0">عمودان: رقم الاكتتاب والاسم (بأي ترتيب، ويُتعرّف عليهما تلقائياً). الأسماء الجديدة تُضاف، والموجودة يُحدَّث اسمها، ولا يُحذف أحد.</p>
-    <input type="file" id="xf" accept=".xlsx,.xls,.csv"><div class="chips"><button class="sec sm" id="tpl">⬇ تحميل نموذج جاهز</button></div><div id="xprev"></div></div>
+    <input type="file" id="xf" accept=".xlsx,.xls,.csv"><div class="chips"><button class="sec sm" id="tpl">⬇ تحميل نموذج إكسل جاهز (عمودان)</button></div><div id="xprev"></div></div>
   <div class="card"><div class="top"><h2>قائمة الطلاب <span class="muted">(${STUD.length})</span></h2><div class="chips">
       <button class="sec sm" id="s_csv">⬇ تصدير CSV</button><button class="red sm" id="s_clr">🗑 حذف كل القائمة</button></div></div>
     <div class="filters" style="grid-template-columns:2fr 1fr;margin-top:10px"><input id="s_q" placeholder="بحث بالاسم أو رقم الاكتتاب" value="${esc(SQ)}" autocomplete="off">
@@ -235,12 +235,27 @@ function loadXlsx(){
     s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'; s.onload = res;
     s.onerror = () => rej(new Error('تعذّر تحميل مكتبة قراءة الإكسل، تحقق من الاتصال بالإنترنت.')); document.head.appendChild(s); });
 }
+/* ملف وصل في عمود واحد (مثل «10001,أحمد محمد») ← نفصله إلى رقم واسم */
+function splitCombined(rows){
+  const one = rows.filter(r => r.filter(Boolean).length === 1);
+  if(!rows.length || one.length < rows.length * 0.8) return rows;
+  const D = '[\\d٠-٩۰-۹]';
+  const re1 = new RegExp('^[\\s"\']*(' + D + '{3,})[\\s"\']*[,;\\t،|:\\-–\\s]+[\\s"\']*(.+?)[\\s"\']*$');
+  const re2 = new RegExp('^[\\s"\']*(.+?)[\\s"\']*[,;\\t،|:\\-–\\s]+[\\s"\']*(' + D + '{3,})[\\s"\']*$');
+  return rows.map(r => {
+    const t = r.find(Boolean) || '';
+    let m = t.match(re1); if(m) return [m[1], m[2]];
+    m = t.match(re2); if(m) return [m[2], m[1]];
+    return /اكتتاب|اسم|reg|name/i.test(t) ? null : [t];
+  }).filter(Boolean);
+}
 function parseRows(rows){
   const cell = v => String(v ?? '').trim();
-  rows = rows.map(r => r.map(cell)).filter(r => r.some(Boolean));
-  let rc = -1, nc = -1, start = 0;
+  rows = rows.map(r => r.map(cell)).filter(r => r.some(Boolean) && !/^sep=/i.test(r[0]));
+  rows = splitCombined(rows);
+  let rc = -1, nc = -1, start = 0, rn = '', nn = '';
   const hi = rows.slice(0, 5).findIndex(r => r.some(c => /اكتتاب|رقم|reg|id|number/i.test(c)) && r.some(c => /اسم|name/i.test(c)));
-  if(hi >= 0){ const h = rows[hi]; rc = h.findIndex(c => /اكتتاب|رقم|reg|id|number/i.test(c)); nc = h.findIndex(c => /اسم|name/i.test(c)); start = hi + 1; }
+  if(hi >= 0){ const h = rows[hi]; rc = h.findIndex(c => /اكتتاب|رقم|reg|id|number/i.test(c)); nc = h.findIndex(c => /اسم|name/i.test(c)); start = hi + 1; rn = h[rc]; nn = h[nc]; }
   else if(rows.length){
     const f = rows[0]; const isNum = c => /^[\d٠-٩۰-۹\s.]+$/.test(c) && c;
     rc = f.findIndex(isNum); nc = f.findIndex((c, i) => c && i !== rc);
@@ -253,7 +268,7 @@ function parseRows(rows){
     if(!name) return invalid.push({row:start + i + 1, why:'الاسم فارغ', v:r.join(' | ')});
     if(valid.has(reg)) dup++; valid.set(reg, name);
   });
-  return {list:[...valid].map(([reg, name]) => ({reg, name})), invalid, dup};
+  return {list:[...valid].map(([reg, name]) => ({reg, name})), invalid, dup, rn, nn};
 }
 async function onExcel(){
   const f = $('xf').files[0]; if(!f) return; const box = $('xprev'); box.innerHTML = '<div class="muted">جارٍ قراءة الملف...</div>';
@@ -264,7 +279,7 @@ async function onExcel(){
     XP = parseRows(rows);
     if(!XP.list.length) throw new Error('لم أجد أي طالب صالح في الملف. تأكد من وجود عمودي رقم الاكتتاب والاسم.');
     const have = new Set(STUD.map(s => s.reg)), news = XP.list.filter(s => !have.has(s.reg)).length;
-    box.innerHTML = `<div class="msg ok" style="margin-top:10px">تم التعرف على <b>${XP.list.length}</b> طالباً: ${news} جديد و${XP.list.length - news} موجود مسبقاً (يُحدَّث اسمه)${XP.dup ? ` — ${XP.dup} مكرر داخل الملف` : ''}.</div>
+    box.innerHTML = `<div class="msg ok" style="margin-top:10px">تم التعرف على <b>${XP.list.length}</b> طالباً: ${news} جديد و${XP.list.length - news} موجود مسبقاً (يُحدَّث اسمه)${XP.dup ? ` — ${XP.dup} مكرر داخل الملف` : ''}.${XP.rn ? `<br><span class="muted">الأعمدة المعتمدة: رقم الاكتتاب ← «${esc(XP.rn)}»، الاسم ← «${esc(XP.nn)}»</span>` : ''}</div>
       <div class="scroll" style="max-height:200px;margin-top:8px"><table class="t"><tbody>${XP.list.slice(0,6).map(s => `<tr style="cursor:default"><td>${esc(s.reg)}</td><td>${esc(s.name)}</td></tr>`).join('')}</tbody></table></div>
       ${XP.invalid.length ? `<div class="warn">تم تجاهل ${XP.invalid.length} صفاً غير صالح، مثلاً: ${XP.invalid.slice(0,3).map(x => `صف ${x.row} (${esc(x.why)})`).join('، ')}</div>` : ''}
       <div class="chips" style="margin-top:10px"><button class="pulse" id="xgo">✅ استيراد ${XP.list.length} طالباً</button></div><div id="xres"></div>`;
@@ -284,7 +299,17 @@ async function importExcel(){
   }catch(e){ btn.disabled = false; $('xres').innerHTML = `<div class="msg bad">${esc(e.message || e)}</div>`; }
 }
 function csvDownload(name, text){ const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(['\ufeff' + text], {type:'text/csv'})); a.download = name; a.click(); }
-function downloadTemplate(){ csvDownload('نموذج_الطلاب.csv', 'رقم الاكتتاب,الاسم الثلاثي\n10001,أحمد محمد الأحمد\n10002,سارة خالد العلي\n'); }
+async function downloadTemplate(){
+  try{
+    await loadXlsx();
+    const ws = XLSX.utils.aoa_to_sheet([['رقم الاكتتاب', 'الاسم الثلاثي'], ['10001', 'أحمد محمد الأحمد'], ['10002', 'سارة خالد العلي']]);
+    ws['!cols'] = [{wch:20}, {wch:36}];
+    const wb = XLSX.utils.book_new(); wb.Workbook = {Views:[{RTL:true}]};
+    XLSX.utils.book_append_sheet(wb, ws, 'الطلاب'); XLSX.writeFile(wb, 'نموذج_الطلاب.xlsx');
+  }catch(e){                       // بديل: CSV مع سطر sep=, ليقسمه إكسل إلى عمودين في أي لغة
+    csvDownload('نموذج_الطلاب.csv', 'sep=,\nرقم الاكتتاب,الاسم الثلاثي\n10001,أحمد محمد الأحمد\n10002,سارة خالد العلي\n');
+  }
+}
 function exportStudents(){
   csvDownload('students.csv', 'رقم الاكتتاب,الاسم,مسموح,المصدر\n' + STUD.map(s => [s.reg, '"' + s.name.replace(/"/g, '""') + '"', s.enabled ? 'نعم' : 'لا', s.source === 'manual' ? 'يدوي' : 'إكسل'].join(',')).join('\n'));
 }
